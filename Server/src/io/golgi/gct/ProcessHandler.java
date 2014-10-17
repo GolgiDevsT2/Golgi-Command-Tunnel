@@ -8,34 +8,86 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.Vector;
 
 import com.openmindnetworks.golgi.api.GolgiException;
 import com.openmindnetworks.golgi.api.GolgiTransportOptions;
 
 public class ProcessHandler {
+	public interface CompletionHandler{
+		public void processComplete(ProcessHandler p, int exitCode);
+	}
+	private static final int MAX_INFLIGHT = 3;
 	private Object syncObj = new Object();
 	private GolgiTransportOptions stdGto;
 	private Process p;
 	private String owner;
 	private String ownerKey;
-	private Charset utf8Charset = Charset.forName("UTF-8");
+	private Charset utf8Charset = Charset.forName("US-ASCII");
 	private int exitCode = 0;
 	private int pktNum = 0;
 	private boolean verbose = false;
 	private boolean processDead = false;
 	private boolean stdOutClosed = false;
 	private boolean stdErrClosed = false;
+	private Vector<OutputPacket> pktQueue = new Vector<OutputPacket>();
+	private int pktsInFlight = 0;
+	private CompletionHandler completionHandler;
+	
+	private void nextPacket(){
+		synchronized(syncObj){
+			pktsInFlight--;
+			while(pktQueue.size() > 0 && pktsInFlight < MAX_INFLIGHT){
+				pktsInFlight++;
+				OutputPacket nextPkt = pktQueue.remove(0);
+				sendPacketWorker(nextPkt);
+				// System.out.print("Queue: " + pktQueue.size() + "\r");
+				// System.out.flush();
+			}
+		}
+		maybeFinished();
+	}
+	
+	private void sendPacketWorker(OutputPacket pkt){
+		// System.out.println("sendPacketWorker()");
+		GCTService.commandOutput.sendTo(new GCTService.commandOutput.ResultReceiver(){
+			@Override
+			public void success() {
+				// System.out.println("Success: " + pktQueue.size());
+				nextPacket();
+			}
+
+			@Override
+			public void failure(GolgiException ex) {
+				System.out.println("ERROR sending output packet");
+				nextPacket();
+			}
+		}, stdGto, owner, pkt);
+		
+	}
+	
+	private void sendPacket(OutputPacket pkt){
+		synchronized(syncObj){
+			if(pktQueue.size() > 0 || pktsInFlight >= MAX_INFLIGHT){
+				pktQueue.add(pkt);
+			}
+			else{
+				pktsInFlight++;
+				sendPacketWorker(pkt);
+			}
+		}
+	}
+	
 	
 	private void maybeFinished(){
 		synchronized(syncObj){
-			if(processDead && stdOutClosed && stdErrClosed){
+			if(processDead && stdOutClosed && stdErrClosed && pktQueue.size() == 0){
 				if(verbose) System.out.println("We are finished");
 				TermStatus s = new TermStatus();
 				s.setLclKey(ownerKey);
 				s.setPktTotal(pktNum);
 				s.setExitCode(exitCode);
 				GCTService.commandComplete.sendTo(new GCTService.commandComplete.ResultReceiver(){
-
 					@Override
 					public void success() {
 					}
@@ -47,6 +99,7 @@ public class ProcessHandler {
 					}
 				},stdGto, owner, s);
 				
+				completionHandler.processComplete(this, exitCode);
 			}
 		}
 	}
@@ -66,32 +119,20 @@ public class ProcessHandler {
 				while(!eof){
 					int len = bs.read(buf);
 					if(len > 0){
-						String str = new String(buf, 0, len, utf8Charset);
-						if(verbose) System.out.println("[" + name + "]:" + str);
+						byte[] data = new byte[len];
+						System.arraycopy(buf, 0, data, 0, len);
 						OutputPacket pkt = new OutputPacket();
 						pkt.setLclKey(ownerKey);
 						pkt.setFd(fdNumForPkt);
+						pkt.setData(data);
 						synchronized(syncObj){
 							pkt.setPktNum(++pktNum);
 						}
-						pkt.setData(str);
-						GCTService.commandOutput.sendTo(new GCTService.commandOutput.ResultReceiver(){
-
-							@Override
-							public void success() {
-							}
-
-							@Override
-							public void failure(GolgiException ex) {
-								System.out.println("ERROR for '" + name + "' packet");
-							}
-							
-						}, stdGto, owner, pkt);
+						sendPacket(pkt);
 					}
 					else if(len < 0){
 						eof = true;
 					}
-					
 				}
 			}
 			catch(IOException ioex){
@@ -150,7 +191,7 @@ public class ProcessHandler {
 					}
 				}
 			}
-			System.out.println("Process complete: " + exitCode);
+			// System.out.println("Process complete: " + exitCode);
 			synchronized(syncObj){
 				processDead = true;
 			}
@@ -158,10 +199,11 @@ public class ProcessHandler {
 		}
 	}
 
-	ProcessHandler(Process p, String owner, String ownerKey, boolean verbose){
+	ProcessHandler(CompletionHandler completionHandler, Process p, String owner, String ownerKey, boolean verbose){
         stdGto = new GolgiTransportOptions();
         stdGto.setValidityPeriod(60);
 
+        this.completionHandler = completionHandler;
 		this.owner = owner;
 		this.ownerKey = ownerKey;
 		this.verbose = verbose;

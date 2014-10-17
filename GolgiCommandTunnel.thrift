@@ -39,7 +39,7 @@ struct OutputPacket{
     1: required string lclKey,
     2: required i32 fd,
     3: required i32 pktNum,
-    4: required string data,
+    4: required data data,
 }
 
 struct TermStatus{

@@ -25,7 +25,7 @@ import com.openmindnetworks.golgi.api.GolgiTransportOptions;
 import com.openmindnetworks.slingshot.ntl.NTL;
 import com.openmindnetworks.slingshot.tbx.TBX;
 
-public class Server {
+public class Server implements ProcessHandler.CompletionHandler{
 	private boolean verbose = false;
     private String devKey = null;
     private String appKey = null;
@@ -34,18 +34,23 @@ public class Server {
     
     private Vector<ProcessHandler> pHandlers = new Vector<ProcessHandler>();
     
+    @Override
+	public void processComplete(ProcessHandler ph, int exitCode){
+    	pHandlers.remove(ph);
+    }
+    
     private GCTService.launchCommand.RequestReceiver inboundLaunchCommand = new GCTService.launchCommand.RequestReceiver(){
 
 		@Override
 		public void receiveFrom(ResultSender resultSender,
 				CommandDetails cmdDetails) {
-			System.out.println("Asked to launch '" + cmdDetails.getCmdLine() + "' by '" + resultSender.getRequestSenderId() + "' key '" + cmdDetails.getLclKey() + "'");
+			System.out.println("[" + resultSender.getRequestSenderId() + "] '" + cmdDetails.getCmdLine() + "'");
 			ProcessBuilder pb = new ProcessBuilder();
 			ArrayList<String> list = new ArrayList<String>();
 			StringTokenizer stk = new StringTokenizer(cmdDetails.getCmdLine());
 			while(stk.hasMoreTokens()){
 				String arg = stk.nextToken();
-				System.out.println("Adding arg: " + arg);
+				// System.out.println("Adding arg: " + arg);
 				list.add(arg);
 			}
 			
@@ -53,7 +58,7 @@ public class Server {
 
 			try{
 				Process p = pb.start();
-				pHandlers.add(new ProcessHandler(p, resultSender.getRequestSenderId(), cmdDetails.getLclKey(), verbose));
+				pHandlers.add(new ProcessHandler(Server.this, p, resultSender.getRequestSenderId(), cmdDetails.getLclKey(), verbose));
 			}
 			catch(Exception e){
 				System.out.println("Zoikes, exploded: " + e.toString() + e.getMessage());

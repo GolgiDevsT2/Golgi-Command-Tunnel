@@ -13,6 +13,8 @@ import io.golgi.gct.gen.OutputPacket;
 import io.golgi.gct.gen.GCTService.commandComplete.ResultSender;
 import io.golgi.gct.gen.TermStatus;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Hashtable;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -41,6 +43,7 @@ public class Client {
     private boolean complete;
     private int pktTarget = 0;
     private int pktCount = 0;
+    private int charCount = 0;
     private int exitCode = 0;
     private boolean verbose = false;
     private Hashtable<String,OutputPacket> pktHash = new Hashtable<String,OutputPacket>();
@@ -48,18 +51,29 @@ public class Client {
     void maybeFinished(){
     	synchronized(syncObj){
     		if(verbose) System.out.println("maybeFinished: " + complete + "/" + pktCount + "/" + pktTarget);
-    		if(complete && pktCount == pktTarget){
+    		if(timeOfDeath == 0 && complete && pktCount == pktTarget){
     			timeOfDeath = System.currentTimeMillis();
+    			// System.err.println("Data length: " + charCount);
     		}
     	}
     }
     
     void printPacket(OutputPacket pkt){
+    	byte[] data = pkt.getData();
     	if(pkt.getFd() == 1){
-    		System.out.print(pkt.getData());
+    		charCount += data.length;
+    		try{
+    			System.out.write(data);
+    		}
+    		catch(IOException ioex){
+    		}
     	}
     	else{
-    		System.err.print(pkt.getData());
+    		try{
+    			System.err.write(data);
+    		}
+    		catch(IOException ioex){
+    		}
     	}
     }
     
@@ -115,6 +129,7 @@ public class Client {
 				}
 				drainPackets();
 			}
+			resultSender.success();
 		}
 	};
     
