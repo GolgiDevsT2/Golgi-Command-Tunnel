@@ -1,0 +1,27 @@
+#
+# This file should contain the encryption keys that have been pre-shared with
+# the endpoints we are interacting with
+#
+# Typically the "server" will have an exhaustive list of all the clients that
+# it is willing to do workon behalf of. To disable an endpoint, remove or
+# comment out its entry
+#
+# The "clients" only need one entry, containing the pre-shared key that
+# the server has configured for it.
+#
+# The format is one entry per line.
+#
+# Blank lines and lines where the first non-whitespace character is a
+# hash (#) are ignored. 
+# 
+# Lines with valid entries contain two "words", the first word is the identity
+# of the endpoiint we want to interwork with and the second word is a key
+# phrase used to seed the BlowFish encryption. The key phrase cannot contain
+# spaces.
+#
+# Examples (commented out):
+# mb-home 543%$jkR287%&
+# bk-on-the-road 837-htw$12x{551298twmkdjfuy
+
+bryant Sc00byD00
+bryant-svr Sc00byD00

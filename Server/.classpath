@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
 	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="lib" path="/Users/brian/Golgi-Pkg/v2-04-16/common/golgi_j2se.jar"/>
+	<classpathentry kind="lib" path="/Users/brian/Golgi-Pkg/v2-04-18/common/golgi_j2se.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="lib" path="/Users/brian/Documents/Development/GolgiCommandTunnel/Server/libs/log4j-1.2.17.jar"/>
 	<classpathentry kind="output" path="bin"/>
