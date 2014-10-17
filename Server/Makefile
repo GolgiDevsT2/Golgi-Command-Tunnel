@@ -44,6 +44,7 @@ SRC_DIR		=	src/io/golgi/gct
 GEN_DIR		=	$(SRC_DIR)/gen
 
 all:
+	@chmod a+x *.sh
 	mkdir -p $(GEN_DIR) bin
 	$(JAVA) -classpath $(CLASSPATH) com.openmindnetworks.golgi.garrick.Garrick -i ../GolgiCommandTunnel.thrift  -jo $(GEN_DIR)
 	$(JAVAC) -d bin -classpath $(CLASSPATH) $(GEN_DIR)/*.java $(SRC_DIR)/*.java
