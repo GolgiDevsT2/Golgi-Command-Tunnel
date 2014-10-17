@@ -120,6 +120,7 @@ public class Client {
     
     private void looper(){
         Class<GolgiAPI> apiRef = GolgiAPI.class;
+        GolgiAPI.setCryptoImpl(new BlowFishWrapper("crypto.keys"));
         GolgiAPINetworkImpl impl = new GolgiAPINetworkImpl();
         GolgiAPI.setAPIImpl(impl);
         stdGto = new GolgiTransportOptions();
