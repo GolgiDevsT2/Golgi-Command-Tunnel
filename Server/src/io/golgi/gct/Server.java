@@ -1,8 +1,13 @@
 package io.golgi.gct;
 
 import io.golgi.gct.gen.CommandDetails;
+import io.golgi.gct.gen.FgetDetails;
+import io.golgi.gct.gen.FputDetails;
+import io.golgi.gct.gen.FputParams;
 import io.golgi.gct.gen.GCTService;
+import io.golgi.gct.gen.OutputPacket;
 import io.golgi.gct.gen.GCTService.launchCommand.ResultSender;
+import io.golgi.gct.gen.TermStatus;
 import io.golgi.gct.gen.GCTService.*;
 
 import java.util.ArrayList;
@@ -25,19 +30,42 @@ import com.openmindnetworks.golgi.api.GolgiTransportOptions;
 import com.openmindnetworks.slingshot.ntl.NTL;
 import com.openmindnetworks.slingshot.tbx.TBX;
 
-public class Server implements ProcessHandler.CompletionHandler{
+public class Server{
 	private boolean verbose = false;
     private String devKey = null;
     private String appKey = null;
     private String identity;
     private GolgiTransportOptions stdGto;
+    private PacketReceiver packetReceiver;
+    private FputHandler fputHandler;
     
     private Vector<ProcessHandler> pHandlers = new Vector<ProcessHandler>();
+    private Vector<FileSender> fgHandlers = new Vector<FileSender>();
     
-    @Override
-	public void processComplete(ProcessHandler ph, int exitCode){
-    	pHandlers.remove(ph);
-    }
+    ProcessHandler.CompletionHandler processCompletionHandler = new ProcessHandler.CompletionHandler() {
+    	@Override
+    	public void processComplete(ProcessHandler ph, int exitCode){
+    		pHandlers.remove(ph);
+    		// System.out.println("'" + ph.getCmdLine() + "' complete");
+    	}
+    };
+    
+    FileSender.CompletionHandler fgetCompletionHandler = new FileSender.CompletionHandler() {
+		@Override
+		public void fileSenderComplete(FileSender fgh, TermStatus s) {
+			fgHandlers.remove(fgh);
+			GCTService.fgetComplete.sendTo(new GCTService.fgetComplete.ResultReceiver(){
+				@Override
+				public void success() {
+				}
+
+				@Override
+				public void failure(GolgiException ex) {
+					System.out.println("Error sending commandComplete: " + ex.getErrText());
+				}
+			},stdGto, fgh.getRemoteId(), s);
+		}
+	}; 
     
     private GCTService.launchCommand.RequestReceiver inboundLaunchCommand = new GCTService.launchCommand.RequestReceiver(){
 
@@ -45,29 +73,35 @@ public class Server implements ProcessHandler.CompletionHandler{
 		public void receiveFrom(ResultSender resultSender,
 				CommandDetails cmdDetails) {
 			System.out.println("[" + resultSender.getRequestSenderId() + "] '" + cmdDetails.getCmdLine() + "'");
-			ProcessBuilder pb = new ProcessBuilder();
-			ArrayList<String> list = new ArrayList<String>();
-			StringTokenizer stk = new StringTokenizer(cmdDetails.getCmdLine());
-			while(stk.hasMoreTokens()){
-				String arg = stk.nextToken();
-				// System.out.println("Adding arg: " + arg);
-				list.add(arg);
-			}
 			
-			pb.command(list);
-
+			ProcessHandler ph = new ProcessHandler(processCompletionHandler, resultSender.getRequestSenderId(), cmdDetails.getCliKey(), verbose);
+			pHandlers.add(ph);
 			try{
-				Process p = pb.start();
-				pHandlers.add(new ProcessHandler(Server.this, p, resultSender.getRequestSenderId(), cmdDetails.getLclKey(), verbose));
+				ph.startCommand(cmdDetails.getCmdLine());
 			}
 			catch(Exception e){
 				System.out.println("Zoikes, exploded: " + e.toString() + e.getMessage());
 				e.printStackTrace();
 			}
 			resultSender.success();
-
 		}
     };
+    
+    private GCTService.fget.RequestReceiver inboundFget = new GCTService.fget.RequestReceiver(){
+		@Override
+		public void receiveFrom(GCTService.fget.ResultSender resultSender,
+				FgetDetails fgetDetails) {
+			System.out.println("[" + resultSender.getRequestSenderId() + "] ' GET '" + fgetDetails.getFilename() + "'");
+			FileSender fgh = new FileSender(fgetCompletionHandler,
+											  resultSender.getRequestSenderId(),
+											  fgetDetails.getCliKey(),
+											  fgetDetails.getFilename());
+			fgHandlers.add(fgh);
+			fgh.start();
+			resultSender.success();
+		}
+    };
+    
     
     private void looper(){
         Class<GolgiAPI> apiRef = GolgiAPI.class;
@@ -76,8 +110,16 @@ public class Server implements ProcessHandler.CompletionHandler{
         GolgiAPI.setAPIImpl(impl);
         stdGto = new GolgiTransportOptions();
         stdGto.setValidityPeriod(60);
+        
+        packetReceiver = new PacketReceiver();
 
         GCTService.launchCommand.registerReceiver(inboundLaunchCommand);
+        GCTService.fget.registerReceiver(inboundFget);
+        
+        fputHandler = new FputHandler(identity, packetReceiver);
+        
+        
+        GCTService.moreData.registerReceiver(packetReceiver);
         
 
         // startStreaming.registerReceiver(inboundStartStreaming);
